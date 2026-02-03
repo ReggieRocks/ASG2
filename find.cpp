@@ -5,54 +5,54 @@
 
 struct Node {
     std::string name;
+    std::string path;
     bool is_dir;
-    Node* parent;
     Node* first_child;
     Node* next_sibling;
-    std::string full_path;
 
-    Node(const std::string& node_name, bool dir, Node* node_parent)
+    Node(const std::string& node_name,
+         const std::string& node_path,
+         bool dir)
         : name(node_name),
+          path(node_path),
           is_dir(dir),
-          parent(node_parent),
           first_child(nullptr),
-          next_sibling(nullptr),
-          full_path("") {}
+          next_sibling(nullptr) {}
 };
 
-static std::string trimSlashes(const std::string& input) {
+static std::string strip_slashes(const std::string& text) {
     size_t start = 0;
-    while (start < input.size() && input[start] == '/') {
+    while (start < text.size() && text[start] == '/') {
         ++start;
     }
-    size_t end = input.size();
-    while (end > start && input[end - 1] == '/') {
+    size_t end = text.size();
+    while (end > start && text[end - 1] == '/') {
         --end;
     }
-    return input.substr(start, end - start);
+    return text.substr(start, end - start);
 }
 
-static std::vector<std::string> splitPath(const std::string& path) {
+static std::vector<std::string> split_path(const std::string& path) {
     std::vector<std::string> parts;
-    std::string trimmed = trimSlashes(path);
-    std::string current;
-    for (char ch : trimmed) {
+    std::string cleaned = strip_slashes(path);
+    std::string chunk;
+    for (char ch : cleaned) {
         if (ch == '/') {
-            if (!current.empty()) {
-                parts.push_back(current);
-                current.clear();
+            if (!chunk.empty()) {
+                parts.push_back(chunk);
+                chunk.clear();
             }
         } else {
-            current.push_back(ch);
+            chunk.push_back(ch);
         }
     }
-    if (!current.empty()) {
-        parts.push_back(current);
+    if (!chunk.empty()) {
+        parts.push_back(chunk);
     }
     return parts;
 }
 
-static Node* findChild(Node* parent, const std::string& name) {
+static Node* find_child(Node* parent, const std::string& name) {
     for (Node* child = parent->first_child; child != nullptr;
          child = child->next_sibling) {
         if (child->name == name) {
@@ -62,8 +62,8 @@ static Node* findChild(Node* parent, const std::string& name) {
     return nullptr;
 }
 
-static Node* addChild(Node* parent, const std::string& name, bool is_dir) {
-    Node* existing = findChild(parent, name);
+static Node* add_child(Node* parent, const std::string& name, bool is_dir) {
+    Node* existing = find_child(parent, name);
     if (existing != nullptr) {
         if (is_dir) {
             existing->is_dir = true;
@@ -71,7 +71,10 @@ static Node* addChild(Node* parent, const std::string& name, bool is_dir) {
         return existing;
     }
 
-    Node* node = new Node(name, is_dir, parent);
+    std::string child_path = parent->path.empty()
+                                 ? "/" + name
+                                 : parent->path + "/" + name;
+    Node* node = new Node(name, child_path, is_dir);
     if (parent->first_child == nullptr) {
         parent->first_child = node;
     } else {
@@ -84,37 +87,16 @@ static Node* addChild(Node* parent, const std::string& name, bool is_dir) {
     return node;
 }
 
-static Node* ensurePath(Node* root, const std::string& full_path) {
+static Node* ensure_dir(Node* root, const std::string& path) {
     Node* current = root;
-    for (const std::string& part : splitPath(full_path)) {
-        current = addChild(current, part, true);
+    for (const std::string& part : split_path(path)) {
+        current = add_child(current, part, true);
     }
     current->is_dir = true;
-    current->full_path = full_path;
     return current;
 }
 
-static std::string buildFullPath(const Node* node) {
-    if (node == nullptr) {
-        return "";
-    }
-    std::vector<std::string> parts;
-    const Node* current = node;
-    while (current != nullptr && !current->name.empty()) {
-        parts.push_back(current->name);
-        current = current->parent;
-    }
-    std::string path = "/";
-    for (size_t i = 0; i < parts.size(); ++i) {
-        path += parts[parts.size() - 1 - i];
-        if (i + 1 < parts.size()) {
-            path += "/";
-        }
-    }
-    return path;
-}
-
-static void printTree(const Node* node, int depth) {
+static void print_tree(const Node* node, int depth) {
     if (node == nullptr) {
         return;
     }
@@ -122,42 +104,75 @@ static void printTree(const Node* node, int depth) {
          child = child->next_sibling) {
         std::cout << std::string(depth * 5, ' ') << child->name << "\n";
         if (child->is_dir) {
-            printTree(child, depth + 1);
+            print_tree(child, depth + 1);
         }
     }
 }
 
-static bool endsWithPath(const std::string& full_path,
-                         const std::string& search_path) {
-    std::string full_trim = trimSlashes(full_path);
-    std::string search_trim = trimSlashes(search_path);
-    if (search_trim.empty()) {
-        return true;
-    }
-    if (full_trim == search_trim) {
-        return true;
-    }
-    if (full_trim.size() <= search_trim.size()) {
-        return false;
-    }
-    size_t pos = full_trim.size() - search_trim.size();
-    if (full_trim.compare(pos, search_trim.size(), search_trim) != 0) {
-        return false;
-    }
-    return full_trim[pos - 1] == '/';
+static void print_directory(const Node* dir) {
+    std::string header = dir->path.empty() ? "/" : dir->path;
+    std::cout << header << "/\n";
+    print_tree(dir, 1);
 }
 
-static void deleteTree(Node* node) {
+static bool path_matches(const std::string& full_path,
+                         const std::string& search_path) {
+    std::string full = strip_slashes(full_path);
+    std::string search = strip_slashes(search_path);
+    if (search.empty()) {
+        return true;
+    }
+    if (full == search) {
+        return true;
+    }
+    if (full.size() <= search.size()) {
+        return false;
+    }
+    size_t pos = full.size() - search.size();
+    return full.compare(pos, search.size(), search) == 0 && full[pos - 1] == '/';
+}
+
+static void destroy_tree(Node* node) {
     if (node == nullptr) {
         return;
     }
     Node* child = node->first_child;
     while (child != nullptr) {
         Node* next = child->next_sibling;
-        deleteTree(child);
+        destroy_tree(child);
         child = next;
     }
     delete node;
+}
+
+static void read_listing(std::istream& input,
+                         Node* root,
+                         std::vector<Node*>& directories,
+                         Node*& home_root) {
+    std::string line;
+    Node* current_dir = nullptr;
+
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.empty()) {
+            current_dir = nullptr;
+            continue;
+        }
+        if (line.back() == ':') {
+            std::string dir_path = line.substr(0, line.size() - 1);
+            current_dir = ensure_dir(root, dir_path);
+            directories.push_back(current_dir);
+            if (dir_path == "/home") {
+                home_root = current_dir;
+            }
+            continue;
+        }
+        if (current_dir != nullptr) {
+            add_child(current_dir, line, false);
+        }
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -167,67 +182,40 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Node* root = new Node("", true, nullptr);
+    Node* root = new Node("", "", true);
     Node* home_root = nullptr;
     std::vector<Node*> directories;
 
-    std::string line;
-    Node* current_dir = nullptr;
-    while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.empty()) {
-            current_dir = nullptr;
-            continue;
-        }
-        if (!line.empty() && line.back() == ':') {
-            std::string dir_path = line.substr(0, line.size() - 1);
-            current_dir = ensurePath(root, dir_path);
-            directories.push_back(current_dir);
-            if (dir_path == "/home") {
-                home_root = current_dir;
-            }
-            continue;
-        }
-        if (current_dir != nullptr) {
-            addChild(current_dir, line, false);
-        }
-    }
+    read_listing(input, root, directories, home_root);
 
     if (argc <= 1) {
-        Node* start = home_root != nullptr ? home_root : root;
-        std::string root_path = buildFullPath(start);
-        if (root_path.empty()) {
-            root_path = "/";
+        Node* start = home_root;
+        if (start == nullptr && root->first_child != nullptr &&
+            root->first_child->next_sibling == nullptr) {
+            start = root->first_child;
         }
-        std::cout << root_path << "/\n";
-        printTree(start, 1);
-        deleteTree(root);
+        if (start == nullptr) {
+            start = root;
+        }
+        print_directory(start);
+        destroy_tree(root);
         return 0;
     }
 
     std::string search_path = argv[1];
-    bool any_match = false;
+    bool found = false;
+
     for (const Node* dir : directories) {
-        if (!dir->is_dir) {
-            continue;
-        }
-        if (endsWithPath(dir->full_path, search_path)) {
-            std::string header = buildFullPath(dir);
-            if (header.empty()) {
-                header = dir->full_path;
-            }
-            std::cout << header << "/\n";
-            printTree(dir, 1);
-            any_match = true;
+        if (dir->is_dir && path_matches(dir->path, search_path)) {
+            print_directory(dir);
+            found = true;
         }
     }
 
-    if (!any_match) {
+    if (!found) {
         std::cout << "Directory not found.\n";
     }
 
-    deleteTree(root);
+    destroy_tree(root);
     return 0;
 }
