@@ -115,31 +115,38 @@ class DirectoryTree {
     std::vector<Node*> matches;
     bool isAbsolute = !query.empty() && query[0] == '/';
     bool hasSlash = query.find('/') != std::string::npos;
-    for (Node* node : directoryOrder) {
-      if (!node->isDir) {
-        continue;
+    auto matchesNode = [&](const Node* node, bool requireDir) {
+      if (requireDir && !node->isDir) {
+        return false;
       }
       if (isAbsolute) {
-        if (node->fullPath == query) {
-          matches.push_back(node);
-        }
-        continue;
+        return node->fullPath == query;
       }
       if (!hasSlash) {
-        if (node->name == query) {
-          matches.push_back(node);
-        }
-        continue;
+        return node->name == query;
       }
       const std::string& fullPath = node->fullPath;
       if (fullPath.size() < query.size()) {
-        continue;
+        return false;
       }
       if (fullPath.compare(fullPath.size() - query.size(), query.size(), query) != 0) {
-        continue;
+        return false;
       }
-      if (fullPath.size() == query.size() ||
-          fullPath[fullPath.size() - query.size() - 1] == '/') {
+      return fullPath.size() == query.size() ||
+          fullPath[fullPath.size() - query.size() - 1] == '/';
+    };
+
+    for (Node* node : directoryOrder) {
+      if (matchesNode(node, true)) {
+        matches.push_back(node);
+      }
+    }
+    if (!matches.empty()) {
+      return matches;
+    }
+    for (const auto& nodePtr : storage) {
+      Node* node = nodePtr.get();
+      if (matchesNode(node, false)) {
         matches.push_back(node);
       }
     }
